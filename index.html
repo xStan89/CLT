@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pivot Table Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── Color Scheme ── */
+:root{
+  /* Page */
+  --page-bg:         #FFFFFF;
+  --text-primary:    #1a1a1a;
+
+  /* Surfaces */
+  --surface:         #fff;
+  --surface-hover:   #f0f0f0;
+
+  /* Borders */
+  --border:          #ddd;
+  --border-strong:   #ccc;
+  --border-light:    #eee;
+
+  /* Text hierarchy */
+  --text-secondary:  #434343;
+  --text-muted:      #646464;
+  --text-faint:      #777777;
+
+  /* Dark accent (pagination active, apply buttons) */
+  --accent-dark:     #222;
+  --accent-dark-hover:#444;
+
+  /* Danger / error */
+  --danger:          #c00;
+  --danger-light:    #fee;
+
+  /* Warning / filter bar */
+  --warning-bg:      #fffbe6;
+  --warning-border:  #e8dfa0;
+
+  /* Highlight (hover crosshair) */
+  --highlight:       rgba(200, 190, 100, 0.225);
+
+  /* Table cell borders */
+  --cell-border:     #d3d3d3;
+
+  /* Header borders */
+  --th-border:rgba(0,0,0,.12);
+
+  /* Semi-transparent overlays */
+  --overlay-light:   rgba(0,0,0,.08);
+  --overlay-shadow:  rgba(0,0,0,.15);
+  --overlay-border:  rgba(0,0,0,.18);
+  --btn-bg:          rgba(255,255,255,.35);
+  --btn-bg-hover:    rgba(255,255,255,.7);
+  --transparent:     rgba(255,255,255,.0);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'Rubik',system-ui,sans-serif;background:var(--page-bg);color:var(--text-primary)}
+#app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* ── Status bar ── */
+#status-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 16px;background:var(--surface);border-bottom:1px solid var(--page-bg);
+  font-size:12px;color:var(--text-muted);flex-shrink:0;gap:12px;
+}
+#status-bar .left{display:flex;align-items:center;gap:8px}
+#status-bar .center{display:flex;align-items:center;gap:8px}
+#status-bar .right{display:flex;align-items:center;gap:8px}
+.share-btn{
+  padding:3px 10px;border:1px solid var(--border-strong);border-radius:4px;background:var(--surface);
+  font-family:inherit;font-size:11px;cursor:pointer;color:var(--text-secondary);text-decoration:none;
+  transition:background .1s;
+}
+.share-btn:hover{background:var(--surface-hover)}
+.source-link{font-size:11px;color:var(--text-muted);text-decoration:none}
+.source-link:hover{text-decoration:underline;color:var(--text-secondary)}
+.source-label{color:var(--text-faint);font-size:11px}
+
+/* ── Filter bar ── */
+#filter-bar{
+  display:none;align-items:center;padding:5px 16px;background:var(--warning-bg);
+  border-bottom:1px solid var(--warning-border);font-size:12px;color:var(--text-muted);flex-shrink:0;gap:8px;
+}
+#filter-bar.active{display:flex}
+.clear-filters-btn{
+  padding:2px 8px;border:1px solid var(--border-strong);border-radius:3px;background:var(--surface);
+  font-family:inherit;font-size:11px;cursor:pointer;color:var(--danger);
+}
+.clear-filters-btn:hover{background:var(--danger-light)}
+
+/* ── Table ── */
+#table-wrapper{flex:1;overflow:auto;position:relative}
+table{border-collapse:separate;border-spacing:0;table-layout:fixed}
+
+thead th{
+  position:sticky;top:0;z-index:10;
+  padding:8px 10px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.3px;
+  border-top:0px solid var(--th-border);
+  border-bottom:2px solid var(--th-border);
+  /* border-left:1px solid var(--th-border);
+  border-right:1px solid var(--th-border); */
+  white-space:normal;word-wrap:break-word;overflow-wrap:break-word;
+  text-align:left;vertical-align:middle;user-select:none;
+}
+th .th-content{display:flex;align-items:center;gap:4px;min-width:0}
+th .th-label{flex:1;min-width:0}
+th .th-btns{display:flex;align-items:center;gap:2px;flex-shrink:0}
+
+/* Sort / filter buttons in header */
+.sort-btn,.filter-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;border-radius:3px;border:none;
+  background:transparent;cursor:pointer;font-size:10px;
+  color:inherit;opacity:.45;transition:opacity .1s,background .1s;
+  padding:0;font-family:inherit;flex-shrink:0;
+}
+.sort-btn:hover,.filter-btn:hover{opacity:1;background:var(--overlay-light)}
+.sort-btn.active-sort{opacity:1;font-weight:700}
+.filter-btn.active-filter{opacity:1;color:var(--danger)}
+
+/* Sort priority badge */
+.sort-badge{font-size:8px;vertical-align:super;margin-left:1px;opacity:.7}
+
+tbody td{
+  padding:6px 10px;
+  border-bottom:1px solid var(--cell-border);
+  /* border-left:1px solid var(--cell-border);
+  border-right:1px solid var(--cell-border); */
+  white-space:normal;word-wrap:break-word;overflow-wrap:break-word;
+  vertical-align:top;
+}
+td.num-cell{text-align:right;font-variant-numeric:tabular-nums}
+td.agg-cell{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+td.all-cell{font-style:italic;color:var(--text-faint)}
+
+/* Toggle button column */
+th.tcol,td.tcol{width:32px!important;min-width:32px;max-width:32px;text-align:center;padding:4px 0 0 0!important;vertical-align:top}
+.tbtn{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:20px;height:20px;border-radius:3px;border:1px solid var(--overlay-border);
+  background:var(--btn-bg);cursor:pointer;font-size:12px;font-weight:700;
+  line-height:1;transition:background .1s,transform .1s;user-select:none;
+  font-family:inherit;padding:0;
+}
+.tbtn:hover{background:var(--btn-bg-hover);transform:scale(1.1)}
+
+/* Sticky columns */
+.col-sticky{position:sticky;z-index:5}
+thead .col-sticky{z-index:15}
+
+/* Hover highlight */
+tbody tr.row-hover td.col-hover{box-shadow:inset 0 0 0 9999px var(--highlight)}
+
+/* Pagination */
+#pag-bar{display:flex;align-items:center;justify-content:center;gap:4px;padding:10px 16px;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;font-size:13px}
+.pg{display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:30px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);font-family:inherit;font-size:13px;cursor:pointer;user-select:none;transition:background .1s}
+.pg:hover:not(:disabled):not(.pga){background:var(--surface-hover)}
+.pga{background:var(--accent-dark);color:var(--surface);border-color:var(--accent-dark)}
+.pg:disabled{opacity:.3;cursor:default}
+.pgd{padding:0 4px;color:var(--text-faint)}
+
+/* Filter dropdown */
+.filter-dropdown{
+  position:absolute;z-index:100;background:var(--surface);border:1px solid var(--border-strong);
+  border-radius:6px;box-shadow:0 4px 16px var(--overlay-shadow);
+  width:220px;max-height:320px;display:flex;flex-direction:column;
+  font-size:12px;
+}
+.filter-dropdown .fd-search{
+  padding:8px;border-bottom:1px solid var(--border-light);
+}
+.filter-dropdown .fd-search input{
+  width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;
+  font-family:inherit;font-size:12px;outline:none;
+}
+.filter-dropdown .fd-search input:focus{border-color:var(--text-muted)}
+.filter-dropdown .fd-list{
+  overflow-y:auto;flex:1;padding:4px 0;max-height:220px;
+}
+.filter-dropdown .fd-item{
+  display:flex;align-items:center;gap:6px;padding:4px 10px;cursor:pointer;
+}
+.filter-dropdown .fd-item:hover{background:var(--surface-hover)}
+.filter-dropdown .fd-item input[type=checkbox]{margin:0;cursor:pointer}
+.filter-dropdown .fd-item label{cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filter-dropdown .fd-actions{
+  display:flex;gap:6px;padding:8px;border-top:1px solid var(--border-light);
+}
+.filter-dropdown .fd-actions button{
+  flex:1;padding:4px 0;border:1px solid var(--border);border-radius:4px;
+  background:var(--surface);font-family:inherit;font-size:11px;cursor:pointer;
+}
+.filter-dropdown .fd-actions button:hover{background:var(--surface-hover)}
+.filter-dropdown .fd-actions button.fd-apply{background:var(--accent-dark);color:var(--surface);border-color:var(--accent-dark)}
+.filter-dropdown .fd-actions button.fd-apply:hover{background:var(--accent-dark-hover)}
+
+/* Loading / Error */
+#load-screen{display:flex;align-items:center;justify-content:center;height:100vh;font-size:14px;color:var(--text-muted)}
+.spin{width:18px;height:18px;border:2.5px solid var(--border);border-top-color:var(--text-secondary);border-radius:50%;animation:sp .6s linear infinite;margin-right:10px}
+@keyframes sp{to{transform:rotate(360deg)}}
+#err-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;padding:32px;text-align:center}
+#err-screen h2{font-size:17px;margin-bottom:8px;color:var(--danger)}
+#err-screen p{font-size:13px;color:var(--text-secondary);max-width:500px;line-height:1.6}
+
+/* ── Chart area outline ── */
+#chart-outline{
+  /* border-left:1px solid var(--cell-border); */
+  /* border:1px solid var(--transparent); */
+  border-radius:6px;
+  overflow:hidden;
+  display:flex;flex-direction:column;flex:1;min-height:0;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="load-screen"><div class="spin"></div>Loading&hellip;</div>
+</div>
+
+<script>
+// ╔══════════════════════════════════════════════════════════════════════════════════╗
+// ║                            USER CONFIGURATION                                  ║
+// ║  Set the two Google Sheet URLs below. Everything else is read from the          ║
+// ║  formatting sheet automatically.                                                ║
+// ║                                                                                 ║
+// ║  Both sheets must be shared as "Anyone with the link can view".                 ║
+// ║  You can paste any Google Sheets URL — the tool converts it automatically.      ║
+// ╚══════════════════════════════════════════════════════════════════════════════════╝
+
+const URLS = {
+  // The Google Sheet containing your data (up to 30 columns).
+  dataSheetUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQQpzCSzDF3ZNRjTpWTkB786-3oLGz8oXcdwdOC70nfoIKPSgCeEtN5X0H9uG1qmzF2wioc3rKZuSZK/pub?gid=0&single=true&output=csv',
+
+  // The Google Sheet containing formatting/config rules.
+  formattingSheetUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQQpzCSzDF3ZNRjTpWTkB786-3oLGz8oXcdwdOC70nfoIKPSgCeEtN5X0H9uG1qmzF2wioc3rKZuSZK/pub?gid=779179433&single=true&output=csv',
+};
+
+// ╔══════════════════════════════════════════════════════════════════════════════════╗
+// ║                        END OF USER CONFIGURATION                               ║
+// ╚══════════════════════════════════════════════════════════════════════════════════╝
+
+
+// ─── JS COLOR CONSTANTS (mirrors CSS :root scheme) ──────────────────────────
+const C = {
+  surface:        '#fff',
+  textDark:       '#000',
+  textLight:      '#fff',
+  headerDefault:  '#FFD241',
+  overlayBorder:  'rgba(0,0,0,.18)',
+  btnBg:          'rgba(255,255,255,.35)',
+  overlayBorderLight: 'rgba(255,255,255,.35)',
+};
+
+// ─── RUNTIME SETTINGS ─────────────────────────────────────────────────────────
+let S = {
+  headerColor:C.headerDefault, tableColor:C.surface, alternateRowColors:true,
+  collapsibleColumns:[], aggregationMode:'SUM', rowsPerPage:50,
+  lockFirstColumn:false, userCanSortColumns:true, userCanFilterColumns:true,
+  headerFontSize:12, tableFontSize:13,
+  sourceText:'', sourceLink:'', shareLink:'',
+};
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let headers=[], rawRows=[], numCols=new Set(), groupExpanded={}, currentPage=1;
+// Sort: array of {col:index, dir:'asc'|'desc'}, most recent first
+let sortStack=[];
+// Toggle sets: each entry is an array of group keys controlled by one toggle button
+let toggleGroupSets=[];
+// Filter: col index → Set of allowed values. If not in map, column is unfiltered.
+let filters={};
+// Open filter dropdown column index, or null
+let openFilter=null;
+
+function hasColl(){return S.collapsibleColumns.length>0}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function parseNum(v){
+  if(v==null||String(v).trim()==='')return NaN;
+  // Strip currency symbols, spaces, keep minus and digits and dots
+  const cleaned=String(v).replace(/[^0-9.\-eE]/g,'');
+  if(cleaned===''||cleaned==='-'||cleaned==='.')return NaN;
+  const n=Number(cleaned);
+  return n;
+}
+
+function luminance(hex){
+  hex=hex.replace('#','');
+  if(hex.length===3)hex=hex.split('').map(c=>c+c).join('');
+  const s=[0,2,4].map(i=>parseInt(hex.substring(i,i+2),16)/255);
+  const l=s.map(c=>c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4));
+  return .2126*l[0]+.7152*l[1]+.0722*l[2];
+}
+function txtClr(bg){return luminance(bg)>.45?C.textDark:C.textLight}
+function darken(hex,pct){
+  hex=hex.replace('#','');
+  if(hex.length===3)hex=hex.split('').map(c=>c+c).join('');
+  return '#'+[0,2,4].map(i=>{
+    const c=Math.max(0,Math.round(parseInt(hex.substring(i,i+2),16)*(1-pct)));
+    return c.toString(16).padStart(2,'0');
+  }).join('');
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CSV PARSER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function parseCSV(text){
+  const result=[];let row=[],field='',inQ=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i],n=text[i+1];
+    if(inQ){if(c==='"'&&n==='"'){field+='"';i++}else if(c==='"')inQ=false;else field+=c}
+    else{
+      if(c==='"')inQ=true;
+      else if(c===','){row.push(field);field=''}
+      else if(c==='\r'&&n==='\n'){row.push(field);field='';result.push(row);row=[];i++}
+      else if(c==='\n'||c==='\r'){row.push(field);field='';result.push(row);row=[]}
+      else field+=c;
+    }
+  }
+  row.push(field);result.push(row);
+  const filtered=result.filter(r=>r.some(f=>f.trim()!==''));
+  if(!filtered.length)return{headers:[],rows:[]};
+  const maxC=Math.min(Math.max(...filtered.map(r=>r.length)),30);
+  filtered.forEach(r=>{while(r.length<maxC)r.push('');r.length=maxC});
+  return{headers:filtered[0]||[],rows:filtered.slice(1)};
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  GOOGLE SHEETS URL CONVERSION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function toCSVUrl(raw){
+  raw=raw.trim();
+  if(/\/pub\b/.test(raw)&&/output=csv/i.test(raw))return raw;
+  if(/\/export\b/.test(raw)){
+    if(!/format=csv/i.test(raw)){raw=raw.replace(/format=[^&]*/i,'format=csv');if(!/format=csv/i.test(raw))raw+=(raw.includes('?')?'&':'?')+'format=csv'}
+    return raw;
+  }
+  const m=raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if(!m)return raw;
+  const id=m[1],gid=raw.match(/[#&?]gid=(\d+)/);
+  let url=`https://docs.google.com/spreadsheets/d/${id}/export?format=csv`;
+  if(gid)url+=`&gid=${gid[1]}`;
+  return url;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  LOAD FORMATTING SHEET
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function loadFormatting(){
+  const url=URLS.formattingSheetUrl;
+  if(!url||url==='YOUR_FORMATTING_SHEET_URL_HERE')return;
+  try{
+    const resp=await fetch(toCSVUrl(url));
+    if(!resp.ok)throw new Error(`HTTP ${resp.status}`);
+    const text=await resp.text();
+    if(text.trimStart().startsWith('<!')||text.trimStart().startsWith('<html'))throw new Error('HTML not CSV');
+    const p=parseCSV(text);
+    if(!p.headers.length||!p.rows.length)return;
+    const fm={};
+    p.headers.forEach((h,i)=>{fm[h.trim()]=(p.rows[0][i]||'').trim()});
+
+    if(fm.headerColor)S.headerColor=fm.headerColor;
+    if(fm.tableColor)S.tableColor=fm.tableColor;
+    if(fm.alternateRowColors!==undefined)S.alternateRowColors=fm.alternateRowColors.toUpperCase()==='TRUE';
+    if(fm.collapsibleColumns)S.collapsibleColumns=fm.collapsibleColumns.split(',').map(s=>s.trim()).filter(Boolean);
+    if(fm.aggregationMode)S.aggregationMode=fm.aggregationMode.toUpperCase()==='AVG'?'AVG':'SUM';
+    if(fm.rowsPerPage&&!isNaN(parseInt(fm.rowsPerPage)))S.rowsPerPage=parseInt(fm.rowsPerPage);
+    if(fm.lockFirstColumn!==undefined)S.lockFirstColumn=fm.lockFirstColumn.toUpperCase()==='TRUE';
+    if(fm.userCanSortColumns!==undefined)S.userCanSortColumns=fm.userCanSortColumns.toUpperCase()==='TRUE';
+    if(fm.userCanFilterColumns!==undefined)S.userCanFilterColumns=fm.userCanFilterColumns.toUpperCase()==='TRUE';
+    if(fm.headerFontSize&&!isNaN(parseInt(fm.headerFontSize)))S.headerFontSize=parseInt(fm.headerFontSize);
+    if(fm.tableFontSize&&!isNaN(parseInt(fm.tableFontSize)))S.tableFontSize=parseInt(fm.tableFontSize);
+    if(fm.sourceText)S.sourceText=fm.sourceText;
+    if(fm.sourceLink)S.sourceLink=fm.sourceLink.startsWith('http')?fm.sourceLink:'https://'+fm.sourceLink;
+    if(fm.shareLink)S.shareLink=fm.shareLink.startsWith('http')?fm.shareLink:'https://'+fm.shareLink;
+  }catch(err){console.warn('Formatting load failed, using defaults:',err.message)}
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  COLUMN TYPE DETECTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function detectNumCols(){
+  numCols=new Set();
+  headers.forEach((_,ci)=>{
+    const vals=rawRows.filter(r=>r[ci]&&r[ci].trim()!=='');
+    if(!vals.length)return;
+    const ok=vals.filter(r=>!isNaN(parseNum(r[ci]))).length;
+    if(ok/vals.length>=.9)numCols.add(ci);
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SORTING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function sortRows(rows){
+  if(!sortStack.length)return rows;
+  const sorted=[...rows];
+  sorted.sort((a,b)=>{
+    for(const s of sortStack){
+      const av=a[s.col]??'', bv=b[s.col]??'';
+      const an=parseNum(av), bn=parseNum(bv);
+      let cmp=0;
+      if(!isNaN(an)&&!isNaN(bn)){cmp=an-bn}
+      else{cmp=String(av).localeCompare(String(bv),undefined,{sensitivity:'base'})}
+      if(cmp!==0)return s.dir==='asc'?cmp:-cmp;
+    }
+    return 0;
+  });
+  return sorted;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  FILTERING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function filterRows(rows){
+  const activeFilters=Object.entries(filters).filter(([_,s])=>s.size>0);
+  if(!activeFilters.length)return rows;
+  return rows.filter(row=>{
+    for(const [ci,allowed] of activeFilters){
+      if(!allowed.has(String(row[parseInt(ci)]).trim()))return false;
+    }
+    return true;
+  });
+}
+
+function hasActiveFilters(){return Object.values(filters).some(s=>s.size>0)}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  COLLAPSE / EXPAND LOGIC
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function collIdx(){
+  const s=new Set(S.collapsibleColumns);
+  return headers.map((h,i)=>s.has(h)?i:-1).filter(i=>i>=0);
+}
+function groupKeyIdx(){
+  const cs=new Set(collIdx());
+  return headers.map((_,i)=>(!cs.has(i)&&!numCols.has(i))?i:-1).filter(i=>i>=0);
+}
+
+function buildView(){
+  // Apply filters
+  let processed=filterRows(rawRows);
+
+  if(!hasColl()){
+    // No grouping: just sort and return
+    processed=sortRows(processed);
+    return processed.map(r=>({cells:[...r],type:'detail',groupKey:null}));
+  }
+
+  const ci=collIdx(),gi=groupKeyIdx(),ni=[...numCols];
+
+  // 1. Group filtered rows
+  const groupMap=new Map(),groupOrder=[];
+  processed.forEach(row=>{
+    const key=gi.map(i=>row[i]??'').join('|||');
+    if(!groupMap.has(key)){groupMap.set(key,[]);groupOrder.push(key)}
+    groupMap.get(key).push(row);
+  });
+
+  // 2. Build group objects with summary cells and raw aggregate values
+  const groups=groupOrder.map(key=>{
+    const groupRows=groupMap.get(key);
+    const expanded=!!groupExpanded[key];
+
+    const sumCells=new Array(headers.length).fill('');
+    const aggValues={}; // col index → raw numeric aggregate (for sorting)
+    gi.forEach(c=>{sumCells[c]=groupRows[0][c]});
+    ci.forEach(c=>{
+      if(numCols.has(c)){
+        sumCells[c]=hasActiveFilters()?'FILTER APPLIED':'ALL';
+      }else{
+        const uniqueCount=new Set(groupRows.map(r=>String(r[c]).trim())).size;
+        sumCells[c]=hasActiveFilters()?`FILTERED (${uniqueCount})`:`ALL (${uniqueCount})`;
+      }
+    });
+    ni.forEach(c=>{
+      const vs=groupRows.map(r=>parseNum(r[c])).filter(v=>!isNaN(v));
+      if(vs.length){
+        const agg=S.aggregationMode==='AVG'?vs.reduce((a,b)=>a+b,0)/vs.length:vs.reduce((a,b)=>a+b,0);
+        aggValues[c]=agg;
+        const sample=groupRows.find(r=>r[c]&&r[c].trim()!=='');
+        sumCells[c]=formatAgg(agg,sample?sample[c]:'');
+      }
+    });
+
+    return {key,groupRows,expanded,sumCells,aggValues};
+  });
+
+  // 3. Sort groups by sortStack (numeric aggregates or text values)
+  const collSet=new Set(ci);
+  if(sortStack.length){
+    groups.sort((a,b)=>{
+      for(const s of sortStack){
+        let cmp=0;
+        if(s.col in a.aggValues || s.col in b.aggValues){
+          const av=a.aggValues[s.col]??0, bv=b.aggValues[s.col]??0;
+          cmp=av-bv;
+        }else if(collSet.has(s.col)&&!numCols.has(s.col)){
+          // Collapsed text column: sort by the unique count numerically
+          const extract=v=>{const m=String(v).match(/\((\d+)\)$/);return m?parseInt(m[1]):0};
+          cmp=extract(a.sumCells[s.col])-extract(b.sumCells[s.col]);
+        }else{
+          const av=String(a.sumCells[s.col]??''), bv=String(b.sumCells[s.col]??'');
+          cmp=av.localeCompare(bv,undefined,{sensitivity:'base'});
+        }
+        if(cmp!==0)return s.dir==='asc'?cmp:-cmp;
+      }
+      return 0;
+    });
+  }
+
+  // 4. Build output: each group's summary, then sorted detail rows
+  const hasNumeric=ni.length>0;
+  const out=[];
+  groups.forEach(g=>{
+    // When expanded and no numeric columns, skip the summary row (no aggregation to show)
+    if(!g.expanded || hasNumeric){
+      out.push({cells:g.sumCells,type:'summary',groupKey:g.key,expanded:g.expanded});
+    }
+    if(g.expanded){
+      // Sort detail rows within the group by the same criteria
+      const sorted=sortRows(g.groupRows);
+      // Deduplicate by collapsible column values (pivot table behavior)
+      const seen=new Set();
+      let first=true;
+      sorted.forEach(row=>{
+        const dedupeKey=ci.map(c=>row[c]??'').join('|||');
+        if(seen.has(dedupeKey))return;
+        seen.add(dedupeKey);
+        const entry={cells:[...row],type:'detail',groupKey:g.key};
+        // If no summary row was emitted, first detail row needs the toggle button
+        if(!hasNumeric&&first){entry.needsToggle=true;first=false}
+        out.push(entry);
+      });
+    }
+  });
+  return out;
+}
+
+// Format an aggregated number mimicking the source column's format
+function formatAgg(num,sampleVal){
+  const s=String(sampleVal);
+  // Detect currency prefix
+  const prefixMatch=s.match(/^([€$£¥₹₽₩])/);
+  const prefix=prefixMatch?prefixMatch[1]:'';
+  // Detect decimal places from sample
+  const dotMatch=s.replace(/[^0-9.]/g,'').match(/\.(\d+)$/);
+  const decimals=dotMatch?dotMatch[1].length:0;
+  const formatted=Math.abs(num).toLocaleString('en-US',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
+  const sign=num<0?'-':'';
+  const label=S.aggregationMode==='AVG'?' (Avg)':' (Total)';
+  return sign+prefix+formatted+label;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SUPPRESSION & MERGE SPANS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function isAllCell(v){const s=String(v);return s==='ALL'||s.startsWith('ALL (')||s==='FILTER APPLIED'||s.startsWith('FILTERED (')}
+
+function isSuppressed(rows,ri,ci){
+  if(ri===0)return false;
+  if(numCols.has(ci))return false;
+  const cur=rows[ri].cells[ci],prev=rows[ri-1].cells[ci];
+  if(isAllCell(cur))return false;
+  if(cur!==prev)return false;
+  for(let c=0;c<ci;c++){if(rows[ri].cells[c]!==rows[ri-1].cells[c])return false}
+  return true;
+}
+
+// Compute merge map: for each cell, {span:N} if it starts a merge, {skip:true} if merged into above
+function computeMerges(pageRows){
+  const map=pageRows.map(()=>headers.map(()=>({span:1})));
+
+  for(let ci=0;ci<headers.length;ci++){
+    if(numCols.has(ci))continue;
+    let mergeStart=0;
+    for(let ri=1;ri<pageRows.length;ri++){
+      if(isSuppressed(pageRows,ri,ci)){
+        map[ri][ci]={skip:true};
+        map[mergeStart][ci].span++;
+      }else{
+        mergeStart=ri;
+      }
+    }
+  }
+  return map;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function render(){
+  const app=document.getElementById('app');
+  const allRows=buildView();
+  const total=allRows.length;
+  const pages=Math.max(1,Math.ceil(total/S.rowsPerPage));
+  if(currentPage>pages)currentPage=pages;
+
+  const start=(currentPage-1)*S.rowsPerPage;
+  const end=Math.min(start+S.rowsPerPage,total);
+  const pageRows=allRows.slice(start,end);
+
+  const hc=hasColl();
+  const hBg=S.headerColor,hTx=txtClr(hBg);
+  const tBg=S.tableColor;
+  const aBg=S.alternateRowColors?darken(tBg,.08):tBg;
+  const colCount=headers.length;
+  const toggleW=32;
+  const minColW=100;
+  const totalMinW=(colCount*minColW)+(hc?toggleW:0);
+
+  // Merge map
+  const merges=computeMerges(pageRows);
+
+  let o='';
+
+  // ── Status bar ──
+  o+='<div id="status-bar">';
+  o+='<div class="left">';
+  if(hc){
+    o+='<button class="share-btn" onclick="expandAll()">Expand all</button>';
+    o+='<button class="share-btn" onclick="collapseAll()">Collapse all</button>';
+  }
+  const filteredTotal=filterRows(rawRows).length;
+  const showing=hasActiveFilters()?`${filteredTotal.toLocaleString()} of ${rawRows.length.toLocaleString()} rows`:
+    `${rawRows.length.toLocaleString()} row${rawRows.length!==1?'s':''}`;
+  o+=`<span>${showing}`;
+  if(hc){const ec=Object.values(groupExpanded).filter(Boolean).length;o+=` &middot; ${ec} group${ec!==1?'s':''} expanded`}
+  o+='</span></div>';
+
+  o+='<div class="center">';
+  if(S.shareLink)o+=`<button class="share-btn" onclick="copyShare(this)" title="Copy link to clipboard">Share</button>`;
+  o+=`<button class="share-btn" onclick="downloadCSV()">Download data</button>`;
+  o+='</div>';
+
+  o+='<div class="right">';
+  if(S.sourceText){
+    o+='<span class="source-label">Source:&nbsp;</span>';
+    if(S.sourceLink)o+=`<a class="source-link" href="${esc(S.sourceLink)}" target="_blank" rel="noopener">${esc(S.sourceText)}</a>`;
+    else o+=`<span class="source-link">${esc(S.sourceText)}</span>`;
+  }
+  o+='</div></div>';
+
+  // ── Filter bar ──
+  o+=`<div id="filter-bar" class="${hasActiveFilters()?'active':''}">`;
+  o+='<span>Filters active</span>';
+  o+='<button class="clear-filters-btn" onclick="clearAllFilters()">Clear all filters</button>';
+  o+='</div>';
+
+  // ── Chart area outline ──
+  o+='<div id="chart-outline">';
+
+  // ── Table ──
+  o+='<div id="table-wrapper">';
+  o+=`<table id="data-table" style="width:100%;min-width:${totalMinW}px;">`;
+
+  o+='<colgroup>';
+  if(hc)o+=`<col style="width:${toggleW}px;">`;
+  for(let i=0;i<colCount;i++)o+='<col>';
+  o+='</colgroup>';
+
+  // ── THEAD ──
+  o+=`<thead style="font-size:${S.headerFontSize}px;"><tr>`;
+  if(hc)o+=`<th class="tcol col-sticky" style="background:${hBg};color:${hTx};left:0;"></th>`;
+
+  headers.forEach((hdr,ci)=>{
+    let cls='';
+    let sty=`background:${hBg};color:${hTx};`;
+    if(S.lockFirstColumn&&ci===0){cls+=' col-sticky';sty+=`left:${hc?toggleW:0}px;`}
+
+    o+=`<th class="${cls}" data-ci="${ci}" style="${sty}">`;
+    o+='<div class="th-content">';
+    o+=`<span class="th-label">${esc(hdr)}</span>`;
+    o+='<span class="th-btns">';
+
+    // Filter button (text columns only) — left
+    if(S.userCanFilterColumns&&!numCols.has(ci)){
+      const fActive=filters[ci]&&filters[ci].size>0;
+      o+=`<button class="filter-btn ${fActive?'active-filter':''}" onclick="toggleFilter(event,${ci})" title="Filter">☰</button>`;
+    }
+
+    // Sort button (all columns) — right
+    if(S.userCanSortColumns){
+      const si=sortStack.findIndex(s=>s.col===ci);
+      const active=si>=0;
+      const dir=active?sortStack[si].dir:null;
+      const arrow=dir==='asc'?'▲':dir==='desc'?'▼':'⇅';
+      const badge=active&&sortStack.length>1?`<span class="sort-badge">${si+1}</span>`:'';
+      o+=`<button class="sort-btn ${active?'active-sort':''}" onclick="cycleSort(${ci})" title="Sort">${arrow}${badge}</button>`;
+    }
+
+    o+='</span></div></th>';
+  });
+  o+='</tr></thead>';
+
+  // ── TBODY ──
+  // Pre-compute toggle sets: each merged toggle button controls multiple groups
+  toggleGroupSets=[];
+  const toggleSetMap={}; // ri → index into toggleGroupSets
+  if(hc){
+    for(let ri=0;ri<pageRows.length;ri++){
+      const m=merges[ri][0];
+      if(!m.skip){
+        // Collect all group keys from summary or needsToggle rows within this merged span
+        const keys=[];
+        for(let r=ri;r<ri+m.span&&r<pageRows.length;r++){
+          if(pageRows[r].type==='summary'||pageRows[r].needsToggle)keys.push(pageRows[r].groupKey);
+        }
+        if(keys.length){
+          toggleSetMap[ri]=toggleGroupSets.length;
+          toggleGroupSets.push(keys);
+        }
+      }
+    }
+  }
+
+  o+=`<tbody style="font-size:${S.tableFontSize}px;">`;
+  pageRows.forEach((row,ri)=>{
+    const even=ri%2===1;
+    const bg=even?aBg:tBg;
+    const tc=txtClr(bg);
+    const isSummary=row.type==='summary';
+
+    o+=`<tr data-ri="${ri}" style="background:${bg};color:${tc};">`;
+
+    // Toggle column (mirrors first column's merge span)
+    if(hc){
+      const toggleMerge=merges[ri][0]; // mirror first column's merge
+      if(toggleMerge.skip){
+        // This row's toggle is merged into the row above — skip
+      }else{
+        let btn='';
+        if((isSummary||row.needsToggle)&&toggleSetMap[ri]!=null){
+          const setIdx=toggleSetMap[ri];
+          const setKeys=toggleGroupSets[setIdx];
+          // Show '−' if ANY group in the set is expanded, '+' otherwise
+          const anyExpanded=setKeys.some(k=>!!groupExpanded[k]);
+          const icon=anyExpanded?'−':'+';
+          btn=`<button class="tbtn" style="color:${tc};border-color:${tc===C.textLight?C.overlayBorderLight:C.overlayBorder};" onclick="toggleGroupSet(${setIdx})">${icon}</button>`;
+        }
+        const tSpan=toggleMerge.span>1?` rowspan="${toggleMerge.span}"`:'';
+        o+=`<td class="tcol col-sticky" data-ci="-1"${tSpan} style="left:0;background:${bg};">${btn}</td>`;
+      }
+    }
+
+    // Data cells
+    headers.forEach((_,ci)=>{
+      const m=merges[ri][ci];
+      if(m.skip)return; // cell is merged into one above
+
+      const val=row.cells[ci]??'';
+      const isN=numCols.has(ci);
+      const isAgg=isSummary&&isN&&String(val).includes('(');
+      const isAll=isAllCell(val);
+
+      let cls=[];
+      if(isAgg)cls.push('agg-cell');
+      else if(isN)cls.push('num-cell');
+      if(isAll)cls.push('all-cell');
+
+      // Compute background for merged cell: use the first row's bg
+      let cellBg=bg;
+      let sty='';
+
+      if(m.span>1){
+        // Merged cell needs explicit background so alternating row stripes
+        // from spanned rows don't bleed through
+        cellBg=bg;
+        sty+=`background:${cellBg};`;
+      }
+
+      if(S.lockFirstColumn&&ci===0){
+        cls.push('col-sticky');
+        sty+=`left:${hc?toggleW:0}px;`;
+        if(m.span<=1)sty+=`background:${bg};`;
+      }
+
+      const rowspanAttr=m.span>1?` rowspan="${m.span}"`:'';
+
+      // Display value — preserve original formatting from CSV
+      let display='';
+      if(isAgg||isAll){display=esc(String(val))}
+      else{display=esc(String(val)).replace(/\n/g,'<br>')}
+
+      o+=`<td class="${cls.join(' ')}" data-ci="${ci}"${rowspanAttr} style="${sty}">${display}</td>`;
+    });
+
+    o+='</tr>';
+  });
+  o+='</tbody></table></div>';
+
+  // ── Pagination ──
+  if(pages>1){
+    o+='<div id="pag-bar">';
+    o+=`<button class="pg" ${currentPage===1?'disabled':''} onclick="goPage(${currentPage-1})">&#8249;</button>`;
+    pagRange(currentPage,pages).forEach(p=>{
+      if(p==='...')o+='<span class="pgd">&hellip;</span>';
+      else o+=`<button class="pg ${p===currentPage?'pga':''}" onclick="goPage(${p})">${p}</button>`;
+    });
+    o+=`<button class="pg" ${currentPage===pages?'disabled':''} onclick="goPage(${currentPage+1})">&#8250;</button>`;
+    o+='</div>';
+  }
+
+  o+='</div>'; // close #chart-outline
+
+  app.innerHTML=o;
+  setupHover();
+}
+
+function pagRange(cur,tot){
+  if(tot<=7)return Array.from({length:tot},(_,i)=>i+1);
+  const p=[1];
+  if(cur>3)p.push('...');
+  for(let i=Math.max(2,cur-1);i<=Math.min(tot-1,cur+1);i++)p.push(i);
+  if(cur<tot-2)p.push('...');
+  p.push(tot);
+  return p;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  HOVER (class-based, clean)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function setupHover(){
+  const table=document.getElementById('data-table');
+  if(!table)return;
+  let lastRI=null,lastCI=null;
+
+  table.addEventListener('mouseover',e=>{
+    const td=e.target.closest('td,th');
+    if(!td)return;
+    const ci=td.getAttribute('data-ci');
+    const tr=td.closest('tr');
+    const ri=tr?tr.getAttribute('data-ri'):null;
+    if(ci===lastCI&&ri===lastRI)return;
+
+    // Clear previous
+    clearHover(table);
+    lastRI=ri;lastCI=ci;
+    if(ci==null||ci==='-1'||ri==null)return;
+
+    // Highlight row
+    if(ri!=null){
+      const row=table.querySelector(`tbody tr[data-ri="${ri}"]`);
+      if(row)row.classList.add('row-hover');
+    }
+    // Highlight column
+    table.querySelectorAll(`tbody td[data-ci="${ci}"]`).forEach(c=>c.classList.add('col-hover'));
+    // Header column highlight
+    const th=table.querySelector(`thead th[data-ci="${ci}"]`);
+    if(th)th.classList.add('col-hover');
+  });
+
+  table.addEventListener('mouseleave',()=>{clearHover(table);lastRI=null;lastCI=null});
+}
+
+function clearHover(table){
+  table.querySelectorAll('.row-hover').forEach(el=>el.classList.remove('row-hover'));
+  table.querySelectorAll('.col-hover').forEach(el=>el.classList.remove('col-hover'));
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SORT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function cycleSort(ci){
+  const existing=sortStack.findIndex(s=>s.col===ci);
+  if(existing<0){
+    // New sort: add as primary (front)
+    sortStack.unshift({col:ci,dir:'asc'});
+  }else{
+    const cur=sortStack[existing];
+    if(cur.dir==='asc'){
+      cur.dir='desc';
+      // Move to front
+      sortStack.splice(existing,1);
+      sortStack.unshift(cur);
+    }else{
+      // Remove (unsort)
+      sortStack.splice(existing,1);
+    }
+  }
+  currentPage=1;
+  render();
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  FILTER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function toggleFilter(event,ci){
+  event.stopPropagation();
+  if(openFilter===ci){closeFilterDropdown();return}
+  closeFilterDropdown();
+  openFilter=ci;
+
+  // Get unique values for this column from raw data
+  const uniqueVals=[...new Set(rawRows.map(r=>String(r[ci]).trim()))].sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+
+  const currentFilter=filters[ci]||new Set();
+  const hasFilter=currentFilter.size>0;
+
+  // Create dropdown
+  const btn=event.target.closest('.filter-btn');
+  const rect=btn.getBoundingClientRect();
+  const wrapper=document.getElementById('table-wrapper');
+  const wrapRect=wrapper.getBoundingClientRect();
+
+  const dd=document.createElement('div');
+  dd.className='filter-dropdown';
+  dd.id='filter-dd';
+
+  // Position
+  let left=rect.left-wrapRect.left+wrapper.scrollLeft;
+  let top=rect.bottom-wrapRect.top+wrapper.scrollTop+4;
+  // Keep within viewport
+  if(left+220>wrapRect.width+wrapper.scrollLeft)left=rect.right-220-wrapRect.left+wrapper.scrollLeft;
+  dd.style.left=left+'px';
+  dd.style.top=top+'px';
+
+  // Track temp selections
+  const tempSelected=hasFilter?new Set(currentFilter):new Set(uniqueVals);
+
+  function renderList(searchTerm){
+    const filtered=searchTerm?uniqueVals.filter(v=>v.toLowerCase().includes(searchTerm.toLowerCase())):uniqueVals;
+    const listEl=dd.querySelector('.fd-list');
+    listEl.innerHTML='';
+    filtered.forEach(v=>{
+      const checked=tempSelected.has(v);
+      const item=document.createElement('div');
+      item.className='fd-item';
+      item.innerHTML=`<input type="checkbox" ${checked?'checked':''} data-val="${esc(v)}"><label>${esc(v||'(empty)')}</label>`;
+      item.querySelector('input').addEventListener('change',e=>{
+        if(e.target.checked)tempSelected.add(v);else tempSelected.delete(v);
+      });
+      item.querySelector('label').addEventListener('click',()=>{
+        const cb=item.querySelector('input');
+        cb.checked=!cb.checked;
+        if(cb.checked)tempSelected.add(v);else tempSelected.delete(v);
+      });
+      listEl.appendChild(item);
+    });
+  }
+
+  dd.innerHTML=`
+    <div class="fd-search"><input type="text" placeholder="Search values…"></div>
+    <div class="fd-list"></div>
+    <div class="fd-actions">
+      <button onclick="applyFilter(${ci},'select-all')">Select All</button>
+      <button onclick="applyFilter(${ci},'clear-all')">Clear All</button>
+      <button class="fd-apply" onclick="applyFilter(${ci},'apply')">Apply</button>
+    </div>
+  `;
+
+  wrapper.style.position='relative';
+  wrapper.appendChild(dd);
+
+  renderList('');
+
+  const searchInput=dd.querySelector('.fd-search input');
+  searchInput.addEventListener('input',e=>renderList(e.target.value));
+  searchInput.focus();
+
+  // Store temp state on the element
+  dd._tempSelected=tempSelected;
+  dd._uniqueVals=uniqueVals;
+  dd._renderList=renderList;
+
+  // Close on outside click
+  setTimeout(()=>{
+    document.addEventListener('click',closeFilterOnOutside);
+  },0);
+}
+
+function closeFilterOnOutside(e){
+  const dd=document.getElementById('filter-dd');
+  if(dd&&!dd.contains(e.target)&&!e.target.closest('.filter-btn')){
+    closeFilterDropdown();
+  }
+}
+
+function closeFilterDropdown(){
+  openFilter=null;
+  const dd=document.getElementById('filter-dd');
+  if(dd)dd.remove();
+  document.removeEventListener('click',closeFilterOnOutside);
+}
+
+function applyFilter(ci,action){
+  const dd=document.getElementById('filter-dd');
+  if(!dd)return;
+
+  if(action==='select-all'){
+    dd._tempSelected.clear();
+    dd._uniqueVals.forEach(v=>dd._tempSelected.add(v));
+    dd._renderList(dd.querySelector('.fd-search input').value);
+    return;
+  }
+  if(action==='clear-all'){
+    dd._tempSelected.clear();
+    dd._renderList(dd.querySelector('.fd-search input').value);
+    return;
+  }
+  if(action==='apply'){
+    const sel=dd._tempSelected;
+    const all=dd._uniqueVals;
+    if(sel.size===all.length||sel.size===0){
+      // All selected or none = remove filter
+      delete filters[ci];
+    }else{
+      filters[ci]=new Set(sel);
+    }
+    closeFilterDropdown();
+    currentPage=1;
+    render();
+  }
+}
+
+function clearAllFilters(){
+  filters={};
+  currentPage=1;
+  render();
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  EVENT HANDLERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function toggleGroup(key){groupExpanded[key]=!groupExpanded[key];render()}
+function toggleGroupSet(setIdx){
+  const keys=toggleGroupSets[setIdx];
+  if(!keys||!keys.length)return;
+  // If any are expanded, collapse all; otherwise expand all
+  const anyExpanded=keys.some(k=>!!groupExpanded[k]);
+  keys.forEach(k=>{groupExpanded[k]=!anyExpanded});
+  render();
+}
+function expandAll(){
+  if(!hasColl())return;
+  const cis=new Set(collIdx());
+  const gi=headers.map((_,i)=>(!cis.has(i)&&!numCols.has(i))?i:-1).filter(i=>i>=0);
+  filterRows(rawRows).forEach(row=>{
+    const key=gi.map(i=>row[i]??'').join('|||');
+    groupExpanded[key]=true;
+  });
+  currentPage=1;render();
+}
+function collapseAll(){groupExpanded={};currentPage=1;render()}
+
+function copyShare(btn){
+  navigator.clipboard.writeText(S.shareLink).then(()=>{
+    const orig=btn.textContent;
+    btn.textContent='Copied!';
+    setTimeout(()=>{btn.textContent=orig},1500);
+  }).catch(()=>{
+    // Fallback
+    const ta=document.createElement('textarea');
+    ta.value=S.shareLink;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();document.execCommand('copy');
+    document.body.removeChild(ta);
+    const orig=btn.textContent;
+    btn.textContent='Copied!';
+    setTimeout(()=>{btn.textContent=orig},1500);
+  });
+}
+
+function downloadCSV(){
+  const csvEsc=v=>{const s=String(v);return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s};
+  const lines=[headers.map(csvEsc).join(',')];
+  rawRows.forEach(r=>{lines.push(r.map(csvEsc).join(','))});
+  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='data.csv';a.style.display='none';
+  document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(url);
+}
+
+function goPage(p){
+  const allRows=buildView();
+  const tot=Math.max(1,Math.ceil(allRows.length/S.rowsPerPage));
+  if(p<1||p>tot)return;
+  currentPage=p;render();
+  const tw=document.getElementById('table-wrapper');if(tw)tw.scrollTop=0;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  ERROR & INIT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function showError(t,m){document.getElementById('app').innerHTML=`<div id="err-screen"><h2>${t}</h2><p>${m}</p></div>`}
+
+async function init(){
+  try{
+    await loadFormatting();
+    const rawUrl=URLS.dataSheetUrl;
+    if(!rawUrl||rawUrl==='YOUR_DATA_SHEET_URL_HERE'){
+      showError('No Data Source','Set <strong>URLS.dataSheetUrl</strong> to your Google Sheet URL.<br><br>Share as <em>"Anyone with the link can view"</em>.');
+      return;
+    }
+    const csvUrl=toCSVUrl(rawUrl);
+    const resp=await fetch(csvUrl);
+    if(!resp.ok)throw new Error(`HTTP ${resp.status}`);
+    const text=await resp.text();
+    if(text.trimStart().startsWith('<!')||text.trimStart().startsWith('<html'))
+      throw new Error('Got HTML — share the sheet as "Anyone with the link can view".');
+    const parsed=parseCSV(text);
+    headers=parsed.headers.map(h=>h.trim());
+    rawRows=parsed.rows;
+    if(!headers.length||!rawRows.length){showError('Empty Data','Sheet returned no data.');return}
+    detectNumCols();
+    S.collapsibleColumns=S.collapsibleColumns.filter(c=>{
+      if(!headers.includes(c)){console.warn(`Column "${c}" not found.`);return false}
+      return true;
+    });
+    groupExpanded={};currentPage=1;
+    render();
+  }catch(err){
+    console.error(err);
+    showError('Failed to Load',`Error: <em>${esc(err.message)}</em><br><br>Check both sheet URLs and sharing settings.`);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
