@@ -207,6 +207,56 @@ tbody tr.row-hover td.col-hover{box-shadow:inset 0 0 0 9999px var(--highlight)}
 #err-screen h2{font-size:17px;margin-bottom:8px;color:var(--danger)}
 #err-screen p{font-size:13px;color:var(--text-secondary);max-width:500px;line-height:1.6}
 
+/* ── Button filter bar ── */
+#btn-filter-bar{
+  display:flex;align-items:center;gap:8px;padding:8px 16px;
+  background:var(--surface);border-bottom:1px solid var(--border-light);
+  flex-shrink:0;flex-wrap:wrap;
+}
+.bf-group{position:relative;display:inline-flex;flex-direction:column;gap:2px}
+.bf-label{font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:var(--text-faint);font-weight:600}
+.bf-btn{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:5px 12px;border:1px solid var(--border-strong);border-radius:5px;
+  background:var(--surface);font-family:inherit;font-size:12px;cursor:pointer;
+  color:var(--text-secondary);transition:background .1s,border-color .1s;
+  white-space:nowrap;user-select:none;
+}
+.bf-btn:hover{background:var(--surface-hover)}
+.bf-btn.bf-active{border-color:var(--accent-dark);background:var(--accent-dark);color:var(--surface)}
+.bf-btn.bf-active:hover{background:var(--accent-dark-hover)}
+.bf-btn .bf-arrow{font-size:8px;opacity:.6}
+.bf-dropdown{
+  position:absolute;top:100%;left:0;z-index:100;margin-top:4px;
+  background:var(--surface);border:1px solid var(--border-strong);
+  border-radius:6px;box-shadow:0 4px 16px var(--overlay-shadow);
+  min-width:180px;max-height:280px;display:flex;flex-direction:column;
+  font-size:12px;
+}
+.bf-dropdown .bfd-search{padding:8px;border-bottom:1px solid var(--border-light)}
+.bf-dropdown .bfd-search input{
+  width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;
+  font-family:inherit;font-size:12px;outline:none;
+}
+.bf-dropdown .bfd-search input:focus{border-color:var(--text-muted)}
+.bf-dropdown .bfd-list{overflow-y:auto;flex:1;padding:4px 0;max-height:180px}
+.bf-dropdown .bfd-item{
+  display:flex;align-items:center;gap:6px;padding:4px 10px;cursor:pointer;
+}
+.bf-dropdown .bfd-item:hover{background:var(--surface-hover)}
+.bf-dropdown .bfd-item input[type=checkbox]{margin:0;cursor:pointer}
+.bf-dropdown .bfd-item label{cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bf-dropdown .bfd-actions{
+  display:flex;gap:6px;padding:8px;border-top:1px solid var(--border-light);
+}
+.bf-dropdown .bfd-actions button{
+  flex:1;padding:4px 0;border:1px solid var(--border);border-radius:4px;
+  background:var(--surface);font-family:inherit;font-size:11px;cursor:pointer;
+}
+.bf-dropdown .bfd-actions button:hover{background:var(--surface-hover)}
+.bf-dropdown .bfd-actions button.bfd-apply{background:var(--accent-dark);color:var(--surface);border-color:var(--accent-dark)}
+.bf-dropdown .bfd-actions button.bfd-apply:hover{background:var(--accent-dark-hover)}
+
 /* ── Chart area outline ── */
 #chart-outline{
   /* border-left:1px solid var(--cell-border); */
@@ -263,6 +313,9 @@ let S = {
   lockFirstColumn:false, userCanSortColumns:true, userCanFilterColumns:true,
   headerFontSize:12, tableFontSize:13,
   sourceText:'', sourceLink:'', shareLink:'',
+  filterButtonColumns:[],
+  defaultToCollapsedColumns:true,
+  commaSeparatedColumns:[],
 };
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
@@ -275,8 +328,45 @@ let toggleGroupSets=[];
 let filters={};
 // Open filter dropdown column index, or null
 let openFilter=null;
+// Button filters: col header name → Set of selected values
+let btnFilters={};
+// Open button filter dropdown header name, or null
+let openBtnFilter=null;
 
 function hasColl(){return S.collapsibleColumns.length>0}
+
+// Button filter columns: set of header names that are button-filterable
+function btnFilterColSet(){return new Set(S.filterButtonColumns)}
+// Comma-separated columns: set of header names
+function commaSepSet(){return new Set(S.commaSeparatedColumns)}
+// Check if a column index is comma-separated
+function isCommaSep(ci){return commaSepSet().has(headers[ci])}
+// Extract values from a cell: split by comma if comma-separated, otherwise return as single-item array
+function cellValues(ci,cellVal){
+  const s=String(cellVal).trim();
+  if(s==='')return[];
+  if(isCommaSep(ci))return s.split(',').map(v=>v.trim()).filter(Boolean);
+  return[s];
+}
+// Visible headers: indices of headers NOT in filterButtonColumns
+function visibleColIndices(){
+  const bf=btnFilterColSet();
+  return headers.map((_,i)=>i).filter(i=>!bf.has(headers[i]));
+}
+// Get unique values for a column (respects commaSeparatedColumns)
+function uniqueColVals(ci){
+  const vals=new Set();
+  rawRows.forEach(r=>{
+    cellValues(ci,r[ci]).forEach(v=>vals.add(v));
+  });
+  return[...vals].sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+}
+// Get unique values for a button filter column by header name
+function btnFilterUniqueVals(headerName){
+  const ci=headers.indexOf(headerName);
+  if(ci<0)return[];
+  return uniqueColVals(ci);
+}
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -388,6 +478,9 @@ async function loadFormatting(){
     if(fm.sourceText)S.sourceText=fm.sourceText;
     if(fm.sourceLink)S.sourceLink=fm.sourceLink.startsWith('http')?fm.sourceLink:'https://'+fm.sourceLink;
     if(fm.shareLink)S.shareLink=fm.shareLink.startsWith('http')?fm.shareLink:'https://'+fm.shareLink;
+    if(fm.filterButtonColumns)S.filterButtonColumns=fm.filterButtonColumns.split(',').map(s=>s.trim()).filter(Boolean);
+    if(fm.defaultToCollapsedColumns!==undefined)S.defaultToCollapsedColumns=fm.defaultToCollapsedColumns.toUpperCase()!=='FALSE';
+    if(fm.commaSeparatedColumns)S.commaSeparatedColumns=fm.commaSeparatedColumns.split(',').map(s=>s.trim()).filter(Boolean);
   }catch(err){console.warn('Formatting load failed, using defaults:',err.message)}
 }
 
@@ -435,16 +528,29 @@ function sortRows(rows){
 
 function filterRows(rows){
   const activeFilters=Object.entries(filters).filter(([_,s])=>s.size>0);
-  if(!activeFilters.length)return rows;
+  // Button filters: header name → Set of selected values
+  const activeBtnFilters=Object.entries(btnFilters).filter(([_,s])=>s.size>0);
+  if(!activeFilters.length&&!activeBtnFilters.length)return rows;
   return rows.filter(row=>{
-    for(const [ci,allowed] of activeFilters){
-      if(!allowed.has(String(row[parseInt(ci)]).trim()))return false;
+    for(const [ciStr,allowed] of activeFilters){
+      const ci=parseInt(ciStr);
+      const vals=cellValues(ci,row[ci]);
+      if(!vals.length)return false;
+      // Row passes if ANY of its values are in the allowed set
+      if(!vals.some(v=>allowed.has(v)))return false;
+    }
+    for(const [hdrName,allowed] of activeBtnFilters){
+      const ci=headers.indexOf(hdrName);
+      if(ci<0)continue;
+      const vals=cellValues(ci,row[ci]);
+      if(!vals.length)return false;
+      if(!vals.some(v=>allowed.has(v)))return false;
     }
     return true;
   });
 }
 
-function hasActiveFilters(){return Object.values(filters).some(s=>s.size>0)}
+function hasActiveFilters(){return Object.values(filters).some(s=>s.size>0)||Object.values(btnFilters).some(s=>s.size>0)}
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -457,7 +563,8 @@ function collIdx(){
 }
 function groupKeyIdx(){
   const cs=new Set(collIdx());
-  return headers.map((_,i)=>(!cs.has(i)&&!numCols.has(i))?i:-1).filter(i=>i>=0);
+  const bf=btnFilterColSet();
+  return headers.map((h,i)=>(!cs.has(i)&&!numCols.has(i)&&!bf.has(h))?i:-1).filter(i=>i>=0);
 }
 
 function buildView(){
@@ -631,7 +738,8 @@ function render(){
   const hBg=S.headerColor,hTx=txtClr(hBg);
   const tBg=S.tableColor;
   const aBg=S.alternateRowColors?darken(tBg,.08):tBg;
-  const colCount=headers.length;
+  const visCols=visibleColIndices();
+  const colCount=visCols.length;
   const toggleW=32;
   const minColW=100;
   const totalMinW=(colCount*minColW)+(hc?toggleW:0);
@@ -655,17 +763,19 @@ function render(){
   if(hc){const ec=Object.values(groupExpanded).filter(Boolean).length;o+=` &middot; ${ec} group${ec!==1?'s':''} expanded`}
   o+='</span></div>';
 
-  o+='<div class="center">';
-  if(S.shareLink)o+=`<button class="share-btn" onclick="copyShare(this)" title="Copy link to clipboard">Share</button>`;
-  o+=`<button class="share-btn" onclick="downloadCSV()">Download data</button>`;
-  o+='</div>';
+  o+='<div class="center"></div>';
 
   o+='<div class="right">';
+  const rightParts=[];
+  if(S.shareLink)rightParts.push(`<a class="source-link" href="javascript:void(0)" onclick="copyShare(this)" title="Copy link to clipboard">Share</a>`);
+  rightParts.push(`<a class="source-link" href="javascript:void(0)" onclick="downloadCSV()">Download data</a>`);
   if(S.sourceText){
-    o+='<span class="source-label">Source:&nbsp;</span>';
-    if(S.sourceLink)o+=`<a class="source-link" href="${esc(S.sourceLink)}" target="_blank" rel="noopener">${esc(S.sourceText)}</a>`;
-    else o+=`<span class="source-link">${esc(S.sourceText)}</span>`;
+    let src='<span class="source-label">Source:</span>';
+    if(S.sourceLink)src+=`<a class="source-link" href="${esc(S.sourceLink)}" target="_blank" rel="noopener">${esc(S.sourceText)}</a>`;
+    else src+=`<span class="source-link">${esc(S.sourceText)}</span>`;
+    rightParts.push(src);
   }
+  o+=rightParts.join('<span class="source-label">&nbsp;&middot;&nbsp;</span>');
   o+='</div></div>';
 
   // ── Filter bar ──
@@ -673,6 +783,22 @@ function render(){
   o+='<span>Filters active</span>';
   o+='<button class="clear-filters-btn" onclick="clearAllFilters()">Clear all filters</button>';
   o+='</div>';
+
+  // ── Button filter bar ──
+  if(S.filterButtonColumns.length>0){
+    o+='<div id="btn-filter-bar">';
+    S.filterButtonColumns.forEach(hdrName=>{
+      if(!headers.includes(hdrName))return;
+      const bf=btnFilters[hdrName];
+      const isActive=bf&&bf.size>0;
+      const uniqueCount=btnFilterUniqueVals(hdrName).length;
+      const label=isActive?`${hdrName} (${bf.size}/${uniqueCount})`:hdrName;
+      o+=`<div class="bf-group" data-bf-hdr="${esc(hdrName)}">`;
+      o+=`<button class="bf-btn ${isActive?'bf-active':''}" onclick="toggleBtnFilter(event,'${esc(hdrName)}')">${esc(label)} <span class="bf-arrow">▼</span></button>`;
+      o+=`</div>`;
+    });
+    o+='</div>';
+  }
 
   // ── Chart area outline ──
   o+='<div id="chart-outline">';
@@ -690,10 +816,11 @@ function render(){
   o+=`<thead style="font-size:${S.headerFontSize}px;"><tr>`;
   if(hc)o+=`<th class="tcol col-sticky" style="background:${hBg};color:${hTx};left:0;"></th>`;
 
-  headers.forEach((hdr,ci)=>{
+  visCols.forEach((ci)=>{
+    const hdr=headers[ci];
     let cls='';
     let sty=`background:${hBg};color:${hTx};`;
-    if(S.lockFirstColumn&&ci===0){cls+=' col-sticky';sty+=`left:${hc?toggleW:0}px;`}
+    if(S.lockFirstColumn&&ci===visCols[0]){cls+=' col-sticky';sty+=`left:${hc?toggleW:0}px;`}
 
     o+=`<th class="${cls}" data-ci="${ci}" style="${sty}">`;
     o+='<div class="th-content">';
@@ -771,7 +898,7 @@ function render(){
     }
 
     // Data cells
-    headers.forEach((_,ci)=>{
+    visCols.forEach((ci)=>{
       const m=merges[ri][ci];
       if(m.skip)return; // cell is merged into one above
 
@@ -796,7 +923,7 @@ function render(){
         sty+=`background:${cellBg};`;
       }
 
-      if(S.lockFirstColumn&&ci===0){
+      if(S.lockFirstColumn&&ci===visCols[0]){
         cls.push('col-sticky');
         sty+=`left:${hc?toggleW:0}px;`;
         if(m.span<=1)sty+=`background:${bg};`;
@@ -922,10 +1049,11 @@ function toggleFilter(event,ci){
   event.stopPropagation();
   if(openFilter===ci){closeFilterDropdown();return}
   closeFilterDropdown();
+  closeBtnFilterDropdown();
   openFilter=ci;
 
   // Get unique values for this column from raw data
-  const uniqueVals=[...new Set(rawRows.map(r=>String(r[ci]).trim()))].sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+  const uniqueVals=uniqueColVals(ci);
 
   const currentFilter=filters[ci]||new Set();
   const hasFilter=currentFilter.size>0;
@@ -1048,8 +1176,123 @@ function applyFilter(ci,action){
 
 function clearAllFilters(){
   filters={};
+  btnFilters={};
   currentPage=1;
   render();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  BUTTON FILTERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function toggleBtnFilter(event,hdrName){
+  event.stopPropagation();
+  if(openBtnFilter===hdrName){closeBtnFilterDropdown();return}
+  closeBtnFilterDropdown();
+  closeFilterDropdown();
+  openBtnFilter=hdrName;
+
+  const uniqueVals=btnFilterUniqueVals(hdrName);
+  const currentFilter=btnFilters[hdrName]||new Set();
+  const hasFilter=currentFilter.size>0;
+
+  const btn=event.target.closest('.bf-btn');
+  const group=btn.closest('.bf-group');
+
+  const dd=document.createElement('div');
+  dd.className='bf-dropdown';
+  dd.id='bf-filter-dd';
+
+  const tempSelected=hasFilter?new Set(currentFilter):new Set(uniqueVals);
+
+  function renderList(searchTerm){
+    const filtered=searchTerm?uniqueVals.filter(v=>v.toLowerCase().includes(searchTerm.toLowerCase())):uniqueVals;
+    const listEl=dd.querySelector('.bfd-list');
+    listEl.innerHTML='';
+    filtered.forEach(v=>{
+      const checked=tempSelected.has(v);
+      const item=document.createElement('div');
+      item.className='bfd-item';
+      item.innerHTML=`<input type="checkbox" ${checked?'checked':''} data-val="${esc(v)}"><label>${esc(v||'(empty)')}</label>`;
+      item.querySelector('input').addEventListener('change',e=>{
+        if(e.target.checked)tempSelected.add(v);else tempSelected.delete(v);
+      });
+      item.querySelector('label').addEventListener('click',()=>{
+        const cb=item.querySelector('input');
+        cb.checked=!cb.checked;
+        if(cb.checked)tempSelected.add(v);else tempSelected.delete(v);
+      });
+      listEl.appendChild(item);
+    });
+  }
+
+  dd.innerHTML=`
+    <div class="bfd-search"><input type="text" placeholder="Search values…"></div>
+    <div class="bfd-list"></div>
+    <div class="bfd-actions">
+      <button onclick="applyBtnFilter('${esc(hdrName)}','select-all')">Select All</button>
+      <button onclick="applyBtnFilter('${esc(hdrName)}','clear-all')">Clear All</button>
+      <button class="bfd-apply" onclick="applyBtnFilter('${esc(hdrName)}','apply')">Apply</button>
+    </div>
+  `;
+
+  group.appendChild(dd);
+  renderList('');
+
+  const searchInput=dd.querySelector('.bfd-search input');
+  searchInput.addEventListener('input',e=>renderList(e.target.value));
+  searchInput.focus();
+
+  dd._tempSelected=tempSelected;
+  dd._uniqueVals=uniqueVals;
+  dd._renderList=renderList;
+
+  setTimeout(()=>{
+    document.addEventListener('click',closeBtnFilterOnOutside);
+  },0);
+}
+
+function closeBtnFilterOnOutside(e){
+  const dd=document.getElementById('bf-filter-dd');
+  if(dd&&!dd.contains(e.target)&&!e.target.closest('.bf-btn')){
+    closeBtnFilterDropdown();
+  }
+}
+
+function closeBtnFilterDropdown(){
+  openBtnFilter=null;
+  const dd=document.getElementById('bf-filter-dd');
+  if(dd)dd.remove();
+  document.removeEventListener('click',closeBtnFilterOnOutside);
+}
+
+function applyBtnFilter(hdrName,action){
+  const dd=document.getElementById('bf-filter-dd');
+  if(!dd)return;
+
+  if(action==='select-all'){
+    dd._tempSelected.clear();
+    dd._uniqueVals.forEach(v=>dd._tempSelected.add(v));
+    dd._renderList(dd.querySelector('.bfd-search input').value);
+    return;
+  }
+  if(action==='clear-all'){
+    dd._tempSelected.clear();
+    dd._renderList(dd.querySelector('.bfd-search input').value);
+    return;
+  }
+  if(action==='apply'){
+    const sel=dd._tempSelected;
+    const all=dd._uniqueVals;
+    if(sel.size===all.length||sel.size===0){
+      delete btnFilters[hdrName];
+    }else{
+      btnFilters[hdrName]=new Set(sel);
+    }
+    closeBtnFilterDropdown();
+    currentPage=1;
+    render();
+  }
 }
 
 
@@ -1068,8 +1311,7 @@ function toggleGroupSet(setIdx){
 }
 function expandAll(){
   if(!hasColl())return;
-  const cis=new Set(collIdx());
-  const gi=headers.map((_,i)=>(!cis.has(i)&&!numCols.has(i))?i:-1).filter(i=>i>=0);
+  const gi=groupKeyIdx();
   filterRows(rawRows).forEach(row=>{
     const key=gi.map(i=>row[i]??'').join('|||');
     groupExpanded[key]=true;
@@ -1145,7 +1387,23 @@ async function init(){
       if(!headers.includes(c)){console.warn(`Column "${c}" not found.`);return false}
       return true;
     });
+    S.filterButtonColumns=S.filterButtonColumns.filter(c=>{
+      if(!headers.includes(c)){console.warn(`Button filter column "${c}" not found.`);return false}
+      return true;
+    });
+    S.commaSeparatedColumns=S.commaSeparatedColumns.filter(c=>{
+      if(!headers.includes(c)){console.warn(`Comma-separated column "${c}" not found.`);return false}
+      return true;
+    });
     groupExpanded={};currentPage=1;
+    // If defaultToCollapsedColumns is false, expand all groups on load
+    if(!S.defaultToCollapsedColumns&&hasColl()){
+      const gi=groupKeyIdx();
+      rawRows.forEach(row=>{
+        const key=gi.map(i=>row[i]??'').join('|||');
+        groupExpanded[key]=true;
+      });
+    }
     render();
   }catch(err){
     console.error(err);
