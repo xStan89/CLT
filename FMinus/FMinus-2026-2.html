@@ -926,22 +926,33 @@
     }
     #table-root th .th-content{display:flex;align-items:center;gap:4px;min-width:0}
     #table-root th .th-label{flex:1;min-width:0}
-    #table-root th .th-btns{display:flex;align-items:center;gap:2px;flex-shrink:0}
+    #table-root th .th-btns{display:flex;align-items:center;gap:4px;flex-shrink:0}
 
     /* Sort / filter buttons in header */
     #table-root .sort-btn,#table-root .filter-btn{
+      position:relative;
       display:inline-flex;align-items:center;justify-content:center;
-      width:18px;height:18px;border-radius:3px;border:none;
-      background:transparent;cursor:pointer;font-size:10px;
-      color:inherit;opacity:.45;transition:opacity .1s,background .1s;
+      width:26px;height:26px;border-radius:6px;
+      border:1px solid rgba(0,0,0,.18);background:rgba(255,255,255,.35);
+      cursor:pointer;color:inherit;opacity:.9;
+      transition:opacity .1s,background .1s,border-color .1s,transform .05s;
       padding:0;font-family:inherit;flex-shrink:0;
     }
-    #table-root .sort-btn:hover,#table-root .filter-btn:hover{opacity:1;background:var(--overlay-light)}
-    #table-root .sort-btn.active-sort{opacity:1;font-weight:700}
-    #table-root .filter-btn.active-filter{opacity:1;color:var(--danger)}
+    #table-root .sort-btn svg,#table-root .filter-btn svg{display:block;pointer-events:none}
+    #table-root .sort-btn:hover,#table-root .filter-btn:hover{opacity:1;background:rgba(255,255,255,.7);border-color:rgba(0,0,0,.35)}
+    #table-root .sort-btn:active,#table-root .filter-btn:active{transform:scale(.94)}
+    #table-root .sort-btn:focus-visible,#table-root .filter-btn:focus-visible{outline:2px solid currentColor;outline-offset:1px}
+    #table-root .sort-btn.active-sort,#table-root .filter-btn.active-filter{
+      opacity:1;background:#111;border-color:#111;color:#fff;
+    }
+    #table-root .sort-btn.active-sort:hover,#table-root .filter-btn.active-filter:hover{background:#333}
 
     /* Sort priority badge */
-    #table-root .sort-badge{font-size:8px;vertical-align:super;margin-left:1px;opacity:.7}
+    #table-root .sort-badge{
+      position:absolute;top:-6px;right:-6px;min-width:14px;height:14px;padding:0 3px;
+      border-radius:7px;background:var(--danger);color:#fff;font-size:9px;font-weight:700;
+      line-height:14px;text-align:center;
+    }
 
     #table-root tbody td{
       padding:6px 10px;
@@ -1199,7 +1210,7 @@
     #exprows-root .err-screen p{font-size:13px;color:var(--text-secondary);max-width:500px;line-height:1.6}
 
   </style>
-<script id="leo-chart-data" type="application/json">{"v":1,"tool":"table","title":"DSFM-2","source":"sheets","url":"https://docs.google.com/spreadsheets/d/e/2PACX-1vR7o11PcoQ4pYDO0LRBSSC7uq7IUlXzItv87dJtGZVstXhjZQa2a6XWZ0LdSiT7VT0L8Q2mosRXVq0K/pubhtml?gid=1989060610&single=true","csv":"","settings":{"headerColor":"#FFD241","tableColor":"#fff","alternateRowColors":true,"collapsibleColumns":[],"aggregationMode":"SUM","rowsPerPage":50,"lockFirstColumn":false,"userCanSortColumns":true,"userCanFilterColumns":true,"headerFontSize":12,"tableFontSize":13,"sourceText":"F Minus","sourceLink":"https://fminus.org/lobbyist-category/canada/","shareLink":"https://www.desmog.com/2026/07/14/a-database-of-canadas-fossil-fuel-lobbyists/","filterButtonColumns":["Sector","Contract Region","Key Client","Report Date(s)","Active as of Last Report"],"filterButtonModes":{"Contract Region":"buttons","Key Client":"buttons","Report Date(s)":"buttons","Active as of Last Report":"buttons","Sector":"buttons"},"filterButtonDefaults":{"Active as of Last Report":"Yes","Report Date(s)":"Oct 2026"},"filterButtonShowInTable":["Sector","Contract Region"],"hiddenColumns":[],"defaultToCollapsedColumns":false,"commaSeparatedColumns":["Sector","Report Date(s)"]}}</script></head>
+<script id="leo-chart-data" type="application/json">{"v":1,"tool":"table","title":"DSFM-2","source":"sheets","url":"https://docs.google.com/spreadsheets/d/e/2PACX-1vR7o11PcoQ4pYDO0LRBSSC7uq7IUlXzItv87dJtGZVstXhjZQa2a6XWZ0LdSiT7VT0L8Q2mosRXVq0K/pubhtml?gid=1989060610&single=true","csv":"","settings":{"headerColor":"#FFD241","tableColor":"#fff","alternateRowColors":true,"collapsibleColumns":[],"aggregationMode":"SUM","rowsPerPage":50,"lockFirstColumn":false,"userCanSortColumns":true,"userCanFilterColumns":true,"headerFontSize":12,"tableFontSize":13,"sourceText":"F Minus","sourceLink":"https://fminus.org/lobbyist-category/canada/","shareLink":"https://www.desmog.com/2026/07/14/a-database-of-canadas-fossil-fuel-lobbyists/","filterButtonColumns":["Sector","Contract Region","Key Client","Report Date(s)","Active as of Last Report"],"filterButtonModes":{"Contract Region":"buttons","Key Client":"buttons","Report Date(s)":"buttons","Active as of Last Report":"buttons","Sector":"dropdown"},"filterButtonDefaults":{"Active as of Last Report":"Yes","Report Date(s)":"Oct 2026"},"filterButtonShowInTable":["Sector","Contract Region"],"hiddenColumns":[],"defaultToCollapsedColumns":false,"commaSeparatedColumns":["Sector","Report Date(s)"]}}</script></head>
 <body>
   <div id="wrap" style="">
     <div id="graph-area">
@@ -6353,16 +6364,19 @@ function renderTable() {
 
     if (S.userCanFilterColumns && !numCols.has(ci) && !btnFilterColSet().has(hdr)) {
       const fActive = filters[ci] && filters[ci].size > 0;
-      o += `<button class="filter-btn ${fActive ? 'active-filter' : ''}" onclick="TBL.toggleFilter(event,${ci})" title="Filter">☰</button>`;
+      o += `<button class="filter-btn ${fActive ? 'active-filter' : ''}" onclick="TBL.toggleFilter(event,${ci})" title="Filter this column" aria-label="Filter ${esc(hdr)}"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.6"/><line x1="15.5" y1="15.5" x2="21" y2="21" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg></button>`;
     }
 
     if (S.userCanSortColumns) {
       const si = sortStack.findIndex(s => s.col === ci);
       const active = si >= 0;
       const dir = active ? sortStack[si].dir : null;
-      const arrow = dir === 'asc' ? '▲' : dir === 'desc' ? '▼' : '⇅';
+      // Two stacked arrowheads; the active direction is solid, the other faint
+      const upOp = dir === 'desc' ? .3 : 1, dnOp = dir === 'asc' ? .3 : 1;
+      const arrow = `<svg viewBox="0 0 16 20" width="13" height="16" aria-hidden="true"><path d="M8 1.5 L14 8.5 H2 Z" fill="currentColor" opacity="${upOp}"/><path d="M8 18.5 L14 11.5 H2 Z" fill="currentColor" opacity="${dnOp}"/></svg>`;
       const badge = active && sortStack.length > 1 ? `<span class="sort-badge">${si + 1}</span>` : '';
-      o += `<button class="sort-btn ${active ? 'active-sort' : ''}" onclick="TBL.cycleSort(${ci})" title="Sort">${arrow}${badge}</button>`;
+      const sortLbl = dir === 'asc' ? 'Sorted ascending — click for descending' : dir === 'desc' ? 'Sorted descending — click to clear' : 'Sort';
+      o += `<button class="sort-btn ${active ? 'active-sort' : ''}" onclick="TBL.cycleSort(${ci})" title="${sortLbl}" aria-label="${sortLbl}: ${esc(hdr)}">${arrow}${badge}</button>`;
     }
 
     o += '</span></div></th>';
@@ -7491,4 +7505,4 @@ return {
 	// ]]>
 </script>
 
-<protonpass-root-e37e data-protonpass-role="root" data-protonpass-theme="os"></protonpass-root-e37e></body></html>
+<protonpass-root-9ff9 data-protonpass-role="root" data-protonpass-theme="os"></protonpass-root-9ff9></body></html>
